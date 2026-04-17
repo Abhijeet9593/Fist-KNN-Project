@@ -1,96 +1,81 @@
 import streamlit as st
+import pandas as pd
 import pickle
-import numpy as np
 
-# ------------------- PAGE CONFIG -------------------
+# 1. Configure the page
 st.set_page_config(
-    page_title="ML Prediction App",
-    page_icon="🤖",
+    page_title="Diabetes Prediction App",
+    page_icon="🏥",
     layout="wide"
 )
 
-# ------------------- CUSTOM CSS -------------------
-st.markdown(
-    """
-    <style>
-    .main {
-        background-color: #f8f9fa;
-    }
-    .title {
-        text-align: center;
-        font-size: 45px;
-        font-weight: bold;
-        color: #2C3E50;
-    }
-    .subtitle {
-        text-align: center;
-        font-size: 18px;
-        color: #566573;
-    }
-    .prediction-box {
-        background: linear-gradient(135deg, #00c6ff, #0072ff);
-        padding: 25px;
-        border-radius: 15px;
-        color: white;
-        text-align: center;
-        font-size: 30px;
-        font-weight: bold;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.2);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# 2. Load the trained model
+# Using @st.cache_resource ensures the model is only loaded once, improving performance
+@st.cache_resource
+def load_model():
+    with open('model.pkl', 'rb') as file:
+        return pickle.load(file)
 
-# ------------------- LOAD MODEL -------------------
-with open("model.pkl", "rb") as f:
-    model = pickle.load(f)
+model = load_model()
 
-# ------------------- HEADER -------------------
-st.markdown('<div class="title">🤖 Machine Learning Prediction App</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Enter the details in sidebar and get prediction instantly 🚀</div>', unsafe_allow_html=True)
-st.write("")
+# 3. Build the UI Header
+st.title("🏥 Diabetes Prediction Dashboard")
+st.markdown("""
+Welcome to the predictive diagnostic tool. Please enter the patient's medical details below to determine the likelihood of diabetes. 
+*This tool is for educational purposes and should not replace professional medical advice.*
+""")
+st.divider()
 
-# ------------------- SIDEBAR INPUTS -------------------
-st.sidebar.header("📌 Input Features")
-
-feature1 = st.sidebar.number_input("Feature 1", value=0.0)
-feature2 = st.sidebar.number_input("Feature 2", value=0.0)
-feature3 = st.sidebar.number_input("Feature 3", value=0.0)
-feature4 = st.sidebar.number_input("Feature 4", value=0.0)
-
-st.sidebar.markdown("---")
-predict_btn = st.sidebar.button("🔮 Predict Now")
-
-# ------------------- MAIN LAYOUT -------------------
-col1, col2 = st.columns([2, 2])
+# 4. Create input columns for a clean interface
+col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📊 Entered Feature Values")
-    st.write("Here are the values you entered:")
-
-    st.table({
-        "Feature": ["Feature 1", "Feature 2", "Feature 3", "Feature 4"],
-        "Value": [feature1, feature2, feature3, feature4]
-    })
+    st.subheader("Patient Demographics & History")
+    age = st.number_input("Age (Years)", min_value=0, max_value=120, value=25, step=1)
+    pregnancies = st.number_input("Number of Pregnancies", min_value=0, max_value=20, value=0, step=1)
+    bmi = st.number_input("BMI (Body Mass Index)", min_value=0.0, max_value=70.0, value=25.0, step=0.1)
+    pedigree = st.number_input("Diabetes Pedigree Function", min_value=0.00, max_value=3.00, value=0.50, step=0.01)
 
 with col2:
-    st.subheader("🎯 Prediction Result")
+    st.subheader("Clinical Measurements")
+    glucose = st.number_input("Glucose Level", min_value=0, max_value=300, value=100, step=1)
+    blood_pressure = st.number_input("Blood Pressure (Diastolic)", min_value=0, max_value=150, value=70, step=1)
+    skin_thickness = st.number_input("Skin Thickness (mm)", min_value=0, max_value=100, value=20, step=1)
+    insulin = st.number_input("Insulin Level", min_value=0, max_value=900, value=79, step=1)
 
-    if predict_btn:
-        input_data = np.array([[feature1, feature2, feature3, feature4]])
-        prediction = model.predict(input_data)[0]
+st.divider()
 
-        st.markdown(
-            f"<div class='prediction-box'>Prediction: {prediction}</div>",
-            unsafe_allow_html=True
-        )
+# 5. Prediction Logic
+if st.button("Predict Diabetes Risk", type="primary", use_container_width=True):
+    # Constructing a DataFrame ensures feature names match what the model was trained on
+    input_data = pd.DataFrame([[
+        pregnancies, glucose, blood_pressure, skin_thickness, 
+        insulin, bmi, pedigree, age
+    ]], columns=['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 
+                 'Insulin', 'BMI', 'DiabetesPedigreeFunction', 'Age'])
+    
+    # Make prediction
+    prediction = model.predict(input_data)[0]
+    
+    # Optional: Get probabilities if your model supports it
+    try:
+        probability = model.predict_proba(input_data)[0]
+        prob_positive = round(probability[1] * 100, 2)
+    except:
+        prob_positive = None
+
+    # 6. Display Results
+    st.subheader("Diagnostic Result:")
+    
+    if prediction == 1:
+        if prob_positive:
+            st.error(f"⚠️ **High Risk Detected:** The model indicates a positive result for diabetes with a {prob_positive}% probability.")
+        else:
+            st.error("⚠️ **High Risk Detected:** The model indicates a positive result for diabetes.")
+        st.info("Recommendation: Please consult with a healthcare provider for a comprehensive evaluation.")
     else:
-        st.info("👈 Enter values from sidebar and click **Predict Now**")
-
-# ------------------- FOOTER -------------------
-st.markdown("---")
-st.markdown(
-    "<center>✨ Built with Streamlit | Deployed ML Model App 🚀</center>",
-    unsafe_allow_html=True
-)
+        if prob_positive:
+            st.success(f"✅ **Low Risk:** The model indicates a negative result for diabetes (Probability: {prob_positive}%).")
+        else:
+            st.success("✅ **Low Risk:** The model indicates a negative result for diabetes.")
+        st.balloons()
